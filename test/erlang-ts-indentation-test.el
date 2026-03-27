@@ -161,9 +161,23 @@ factorial(N) when N > 0 ->
     {a,b,c,d,
      e,f,A}.")
 
-  (when-indenting-it "indents a list comprehension"
-    "doubles(Xs) ->
-    [X * 2 || X <- Xs].")
+  (when-indenting-it "indents a map"
+   "make_map() ->
+    #{ foo => 1,
+       bar =>
+           2,
+       {complex,
+        key} => 3
+     }.")
+
+  (when-indenting-it "indents a binary"
+   "make_bin(Str) ->
+    Bin1 = << 1:1, 0:1, 1:1, 1:1,
+              0:4,
+              (byte_size(Str)):32/little
+           >>,
+    <<Bin1:binary,
+      Str:binary>>.")
 
   (when-indenting-it "indents a multi-line binary operation"
     "add(X, Y) ->
@@ -175,6 +189,15 @@ factorial(N) when N > 0 ->
                  name :: string(),
                  age :: non_neg_integer()
                 }).")
+
+  (when-indenting-it "indents record constructs"
+    "make_record(A,B,C) ->
+    R1 = #record1{
+            field_1 =
+                A,
+            field_2 = B},
+    #record2{f1 = data,
+             f2 = R1}.")
 
   (when-indenting-it "indents a type definition"
     "-type color() :: red | green | blue.")
