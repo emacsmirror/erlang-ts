@@ -69,7 +69,8 @@ one for erlang-mode indentation, one for tree-sitter indentation."
   (when-indenting-it "indents a function with multiple clauses"
     "factorial(0) -> 1;
 factorial(N) when N > 0 ->
-    N * factorial(N - 1).")
+    N *
+        factorial(N - 1).")
 
   (when-indenting-it "indents a case expression"
     "process(Type) ->
@@ -182,8 +183,33 @@ factorial(N) when N > 0 ->
 
   (when-indenting-it "indents a multi-line binary operation"
     "add(X, Y) ->
-    X +
-        Y.")
+    Sum1 = X +
+        Y,
+    function(Sum1 +
+                 42).")
+
+  (when-indenting-it "indents a multi-line unary operation"
+    "function(X, Y) ->
+    Z = is_tuple(X) and not
+        is_list(X),
+    Z and Y.")
+
+  ;; There is difference here with erlang if there are
+  ;; multiple matches X = Y = function()
+  ;; erlang-mode binds (X = Y) = function()
+  ;; tree-sitter grammar X = (Y = function)
+  (when-indenting-it "indents a multi-line match expression"
+    "check(X, Y, Rec) ->
+    {complex_expression =
+         X, y = Y} =
+        Rec.")
+
+  (when-indenting-it "indents a multi-line parenthesis expression"
+    "function(X, Y, Z, Div) ->
+    Foo = (X + Y +
+               Z
+          ) / Div,
+    Foo + 42.")
 
   (when-indenting-it "indents a record definition"
     "-record(person, {

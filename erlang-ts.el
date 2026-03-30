@@ -501,16 +501,12 @@ all cases correctly, especially incomplete code during editing."
 (defun erlang-ts--grand-parent (_node parent _bol &rest _)
   "Return the position on PARENT's parent."
   (when-let* ((gp (treesit-node-parent parent)))
-    (save-excursion
-      (goto-char (treesit-node-start gp))
-      (point))))
+    (treesit-node-start gp)))
 
 (defun erlang-ts--great-grand-parent (_node parent _bol &rest _)
   "Return the position on PARENT's parent's parent."
   (when-let* ((ggp (treesit-node-parent (treesit-node-parent parent))))
-    (save-excursion
-      (goto-char (treesit-node-start ggp))
-      (point))))
+    (treesit-node-start ggp)))
 
 (defun erlang-ts--anchor-matching-open (node parent _bol &rest _)
   "Return position of the opening delimiter matching NODE in PARENT.
@@ -534,8 +530,8 @@ position after it.  Used to align elements with the first element."
     (when (re-search-forward "[[({]" (treesit-node-end parent) t)
       (point))))
 
-(defun erlang-ts--anchor-first-child (node parent _bol &rest _)
-  "Return position aligned with first child.
+(defun erlang-ts--anchor-1-child (node parent _bol &rest _)
+  "Return position aligned with first child after opening bracket.
 Finds the first child of parent and returns position or if NODE is
 the first child finds the first `(', `[', or `{' in PARENT and returns the
 position after it.  Used to align elements with the first element."
@@ -546,6 +542,11 @@ position after it.  Used to align elements with the first element."
         (goto-char (treesit-node-start parent))
         (when (re-search-forward "[[({]" (treesit-node-end parent) t)
           (point))))))
+
+(defun erlang-ts--anchor-0-child (_node parent _bol &rest _)
+  "Return position aligned with PARENT's first child.
+Finds the first child of parent and returns position"
+  (treesit-node-start (treesit-node-child parent 0)))
 
 (defun erlang-ts--anchor-map (node parent _bol &rest _)
   "Return map position aligned with first element.
@@ -620,6 +621,20 @@ Used for export/import attributes where `[' is the relevant delimiter."
     (goto-char (treesit-node-start parent))
     (when (search-forward "[" (treesit-node-end parent) t)
       (point))))
+
+(defun erlang-ts--anchor-expr (node parent bol &rest _)
+  "Return anchor position for expr, depends on PARENT's parent.
+If PARENT is clause_body return parent-bol otherwise
+anchor NODE to 0 child."
+  (let* ((gp (treesit-node-parent parent))
+         (gp-type (treesit-node-type gp)))
+    (if (or (equal gp-type "clause_body")
+            (equal gp-type "match_expr"))
+        (save-excursion
+          (goto-char (treesit-node-start parent))
+          (back-to-indentation)
+          (point))
+      (erlang-ts--anchor-0-child node parent bol))))
 
 (defun erlang-ts--match-triple-comment (node _parent _bol &rest _)
   "Match NODE when it is a %%% comment (three or more percent signs)."
@@ -737,9 +752,9 @@ The return value is suitable for `treesit-simple-indent-rules'."
      ((parent-is "pipe") erlang-ts--grand-parent 0)
      ((node-is ">>") parent 0)
      ;; Collections: align after first child
-     ((parent-is "^list$") erlang-ts--anchor-first-child 0)
-     ((parent-is "^tuple$") erlang-ts--anchor-first-child 0)
-     ((parent-is "^binary$") erlang-ts--anchor-first-child 0)
+     ((parent-is "^list$") erlang-ts--anchor-1-child 0)
+     ((parent-is "^tuple$") erlang-ts--anchor-1-child 0)
+     ((parent-is "^binary$") erlang-ts--anchor-1-child 0)
 
      ;; Export/import attributes: align after [
      ((parent-is "export_attribute") erlang-ts--anchor-after-open-bracket 0)
@@ -747,17 +762,18 @@ The return value is suitable for `treesit-simple-indent-rules'."
      ((parent-is "export_type_attribute") erlang-ts--anchor-after-open-bracket 0)
 
      ;; Comprehensions
-     ((parent-is "list_comprehension") erlang-ts--anchor-first-child 0)
+     ((parent-is "list_comprehension") erlang-ts--anchor-1-child 0)
      ((parent-is "lc_exprs") erlang-ts--anchor-comprehensions 0)
      ((parent-is "lc_or_zc_expr") parent 0)
      ((parent-is "generator") parent erlang-indent-level)
-     ((parent-is "binary_comprehension") erlang-ts--anchor-first-child 0)
+     ((parent-is "binary_comprehension") erlang-ts--anchor-1-child 0)
 
      ;; Multi-line expressions
-     ((parent-is "binary_op_expr") parent-bol erlang-indent-level)
-     ((parent-is "match_expr") parent-bol erlang-indent-level)
+     ((parent-is "binary_op_expr") erlang-ts--anchor-expr erlang-indent-level)
+     ((parent-is "match_expr") erlang-ts--anchor-0-child erlang-indent-level)
      ((parent-is "unary_op_expr") parent-bol erlang-indent-level)
-     ((parent-is "paren_expr") parent-bol erlang-indent-level)
+     ((parent-is "paren_expr") erlang-ts--grand-parent erlang-indent-level)
+     ((parent-is "catch_expr") parent erlang-indent-level) ;; old catch
 
      ;; Guard
      ((parent-is "guard") parent-bol erlang-indent-guard)
