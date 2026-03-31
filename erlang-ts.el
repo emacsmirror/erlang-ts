@@ -573,6 +573,17 @@ in PARENT + `erlang-indent-guard'."
          (treesit-node-start (treesit-node-child parent 0))
          erlang-indent-guard))))
 
+(defun erlang-ts--anchor-guard (_node parent _bol &rest _)
+  "Return guard position.
+Find `when' in PARENT return its position + `erlang-indent-level'."
+  (let ((child1 (treesit-node-child parent 1))
+        (child2 (treesit-node-child parent 2)))
+    (cond
+     ((equal (treesit-node-type child1) "when")
+      (+ (treesit-node-start child1) erlang-indent-level))
+     ((equal (treesit-node-type child2) "when")
+      (+ (treesit-node-start child2) erlang-indent-level)))))
+
 (defun erlang-ts--anchor-comprehensions (node parent _bol &rest _)
   "Return comprehension aligned with first element.
 Finds the first generator of PARENT and returns the position, or
@@ -654,30 +665,27 @@ anchor NODE to 0 child."
   "Return `comment-column' as an absolute offset for single-% comments."
   (or comment-column 48))
 
+
 (defun erlang-ts--double-indent-offset (_node _parent _bol &rest _)
   "Return double `erlang-indent-level'."
   (* erlang-indent-level 2))
 
-(defun erlang-ts--match-clause-body-in (grandparent-type)
-  "Return a matcher for clause_body children inside GRANDPARENT-TYPE."
-  (lambda (_node parent _bol &rest _)
-    (and (equal (treesit-node-type parent) "clause_body")
-         (equal (treesit-node-type (treesit-node-parent parent))
-                grandparent-type))))
+(defvar-local erlang-ts--indent-offset erlang-indent-level
+  "Temporary set indent-offset variable.")
 
-(defun erlang-ts--match-inline-clause-body (clause-type block-type)
-  "Return a matcher for clause_body children in inline-style clauses.
-Matches when the parent is a clause_body inside CLAUSE-TYPE, and the
-clause starts on the same line as the enclosing BLOCK-TYPE keyword."
-  (lambda (_node parent _bol &rest _)
-    (and (equal (treesit-node-type parent) "clause_body")
-         (let ((clause (treesit-node-parent parent)))
-           (and (equal (treesit-node-type clause) clause-type)
-                (let ((block (treesit-node-parent clause)))
-                  (and (equal (treesit-node-type block) block-type)
-                       ;; Check if clause starts on same line as block keyword
-                       (= (line-number-at-pos (treesit-node-start block))
-                          (line-number-at-pos (treesit-node-start clause))))))))))
+(defun erlang-ts--anchor-clause-body (_node parent _bol &rest _)
+  "Return the anchor point for NODE.
+Finds the anchor point in PARENT and returns it while also setting the
+corresponding indentation offset to `erlang-ts--indent-offset'"
+  (let* ((gp (treesit-node-parent parent))
+         (type (treesit-node-type gp)))
+    (cond
+     ((equal type "function_clause")
+      (setq-local erlang-ts--indent-offset erlang-indent-level)
+      (treesit-node-start gp))
+     (t
+      (setq-local erlang-ts--indent-offset (* 2 erlang-indent-level))
+      (treesit-node-start (treesit-node-parent gp))))))
 
 (defun erlang-ts--indent-rules ()
   "Return tree-sitter indentation rules for Erlang.
@@ -708,22 +716,15 @@ The return value is suitable for `treesit-simple-indent-rules'."
      ;; Closing delimiters: align with their opening counterpart
      ((match "^[])}]$" nil) erlang-ts--anchor-matching-open 0)
 
-     ;; clause_body inside fun_clause/receive_after needs 2x indent
-     ;; because the clause starts on the same line as the keyword
-     (,(erlang-ts--match-clause-body-in "fun_clause")
-      erlang-ts--great-grand-parent erlang-ts--double-indent-offset)
-     (,(erlang-ts--match-clause-body-in "receive_after")
-      erlang-ts--grand-parent erlang-ts--double-indent-offset)
-     ;; if_clause body needs 2x indent only when the clause is on
-     ;; the same line as the `if' keyword (inline style)
-     (,(erlang-ts--match-inline-clause-body "if_clause" "if_expr")
-      erlang-ts--grand-parent erlang-ts--double-indent-offset)
-
-     ;; guard/when handling
-     ((node-is "when") parent erlang-indent-guard)
-
+     ((node-is "clause_body") parent erlang-indent-guard)  ;; indents the ->
      ;; Expressions inside clause_body: indent from the clause line
-     ((parent-is "clause_body") erlang-ts--grand-parent erlang-indent-level)
+     ((parent-is "clause_body") erlang-ts--anchor-clause-body erlang-ts--indent-offset)
+
+     ;; Guard / when handling
+     ((match "when" "function_clause" nil 0 10) parent erlang-indent-guard)
+     ((node-is "when") erlang-ts--grand-parent 6)
+     ((node-is "guard") erlang-ts--anchor-guard 0)
+     ((parent-is "guard_clause") erlang-ts--anchor-0-child 0)
 
      ;; Clauses inside block constructs
      ((parent-is "case_expr") parent erlang-indent-level)
@@ -774,9 +775,6 @@ The return value is suitable for `treesit-simple-indent-rules'."
      ((parent-is "unary_op_expr") parent-bol erlang-indent-level)
      ((parent-is "paren_expr") erlang-ts--grand-parent erlang-indent-level)
      ((parent-is "catch_expr") parent erlang-indent-level) ;; old catch
-
-     ;; Guard
-     ((parent-is "guard") parent-bol erlang-indent-guard)
 
      ;; Type specs: body indented 2x, | alternatives aligned at indent+2
      ((parent-is "spec") parent-bol erlang-indent-level)

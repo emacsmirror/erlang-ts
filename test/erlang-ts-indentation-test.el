@@ -130,6 +130,15 @@ factorial(N) when N > 0 ->
             ok
     end.")
 
+  (when-indenting-it "indents a receive expression same line"
+    "loop() ->
+    receive {msg, Msg} ->
+            handle(Msg),
+            loop();
+        stop ->
+            ok
+    end.")
+
   (when-indenting-it "indents a receive with after"
     "wait() ->
     receive
@@ -289,7 +298,8 @@ factorial(N) when N > 0 ->
   (when-indenting-it "indents receive in assignment"
     "f() ->
     Var = receive
-              Msg -> Msg
+              Msg ->
+                  Msg
           after 5000 ->
                   timeout
           end.")
@@ -323,6 +333,23 @@ factorial(N) when N > 0 ->
             (A) ->
                 A
         end.")
+
+  (when-indenting-it "indents function guard constructs"
+   "function(X, Y)
+  when
+      X >= Y,
+      X > 0 ->
+    ok.")
+
+  (when-indenting-it "indents receive guard constructs"
+   "function(X, Y) ->
+    receive Bin
+          when
+              Bin > X,
+              X < 0 ->
+            foo
+    end.")
+
 
   (when-indenting-it "list comprehension 1"
    "function(X) ->
